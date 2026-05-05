@@ -90,7 +90,7 @@ echo "**************************************************"
 echo "Generate certificate files..."
 echo "Just keep pressing the Enter key."
 echo "**************************************************"   
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout key.pem -out cert.pem
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout key.pem -out cert.pem -subj "/C=US/ST=NA/L=NA/O=Unitree/OU=Sim/CN=localhost"
 mkdir -p ~/.config/xr_teleoperate/
 cp key.pem cert.pem ~/.config/xr_teleoperate/
 rm key.pem cert.pem

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CycloneDDS configuration for unitree_sim_isaaclab + xr_teleoperate.
+
+  Use only as a fallback when default multicast discovery fails between the two
+  Docker containers (e.g. multicast disabled by host kernel / iptables, or one
+  container is not on `--network=host`). With both containers on host net, the
+  default config (no XML) usually works.
+
+  To activate: copy this file to BOTH containers at /root/cyclonedds.xml and
+  export CYCLONEDDS_URI=file:///root/cyclonedds.xml in each shell.
+-->
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <!-- Replace "enp12s0" with the actual host NIC name (run `ip -o -4 addr show`) -->
+      <Interfaces><NetworkInterface name="enp12s0"/></Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers>
+        <Peer address="127.0.0.1"/>
+        <!-- Add more peers here if containers run on different hosts -->
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
