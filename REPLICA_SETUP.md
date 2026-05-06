@@ -63,7 +63,7 @@ chmod +x setup_replica.sh
 # Optional flags:
 #   ./setup_replica.sh --isaac-sim 5.0 --cuda cu128
 #   ./setup_replica.sh --skip-apt          # if apt deps already installed
-#   ./setup_replica.sh --skip-miniconda    # if /root/miniconda3 already exists
+#   ./setup_replica.sh --skip-conda        # if /root/miniforge3 already exists
 # RTX 5090이면: ./setup_replica.sh --isaac-sim 5.1 --cuda cu128
 # 또는 (RTX 5090에 더 검증된 경로): ./setup_replica.sh --isaac-sim 5.0 --cuda cu128
 ```
@@ -90,7 +90,7 @@ Each step is idempotent and the script can be re-run safely:
 
 1. **Pre-flight** — disk, GPU, OS, Docker, conda absence checks
 2. **APT deps** — `cmake build-essential openssl git git-lfs unzip ca-certificates curl wget iproute2`
-3. **Miniconda** — install to `/root/miniconda3`, init bash, set libmamba solver, accept Anaconda channel ToS
+3. **Miniforge** — install to `/root/miniforge3`, init bash, set libmamba solver. Default channel is `conda-forge`, so no Anaconda ToS gate and the installer is fetched from GitHub Releases (proxy-friendly)
 4. **Repo init** — verify cwd is the fork and `git submodule update --init --recursive`
 5. **Upstream patches verified** — `auto_setup_env.sh` already contains the openssl `-subj` fix in this fork (see CUSTOMIZATIONS.md)
 6. **Run patched `auto_setup_env.sh`** — clones IsaacLab + cyclonedds + unitree_sdk2_python into `..`, fetches assets via git-lfs, builds CycloneDDS from source, creates the conda env `unitree_sim_env`, pip-installs Isaac Sim + PyTorch + IsaacLab + unitree_sdk2_python + teleimager
@@ -108,15 +108,13 @@ apt-get update && apt-get install -y --no-install-recommends \
   cmake build-essential openssl git git-lfs unzip ca-certificates curl wget iproute2
 git lfs install
 
-# B. Miniconda
-cd /tmp && wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-bash miniconda.sh -b -p /root/miniconda3
-/root/miniconda3/bin/conda init bash
+# B. Miniforge (conda-forge default channel — no Anaconda ToS, proxy-friendly)
+cd /tmp && wget -q https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -O miniforge.sh
+bash miniforge.sh -b -p /root/miniforge3
+/root/miniforge3/bin/conda init bash
 source /root/.bashrc
-/root/miniconda3/bin/conda config --set solver libmamba
-/root/miniconda3/bin/conda config --set auto_activate_base false
-/root/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-/root/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+/root/miniforge3/bin/conda config --set solver libmamba
+/root/miniforge3/bin/conda config --set auto_activate_base false
 
 # C. EULA pre-acceptance (sim_main.py would otherwise hang)
 echo 'export OMNI_KIT_ACCEPT_EULA=Y' >> /root/.bashrc
@@ -133,7 +131,7 @@ bash auto_setup_env.sh 5.1 unitree_sim_env cu126   # adjust args for your GPU
 | Pitfall | What goes wrong | Mitigation |
 |---|---|---|
 | **`/root/.bashrc` aliases `python` to `/isaac-sim/python.sh`** | After conda activate, `python sim_main.py` still runs Isaac Sim's bundled Python (no teleimager) → `ModuleNotFoundError: teleimager.image_server` | `activate_env.sh` calls `unalias python python3 pip pip3`; or use `run_sim.sh` (absolute path) |
-| **Conda Terms of Service prompt** | `conda create` aborts non-interactively | Pre-accept ToS for `pkgs/main` and `pkgs/r` |
+| **Anaconda channel ToS / proxy block** | `conda create` aborts on `pkgs/main` ToS or `repo.anaconda.com` proxy denial | Use Miniforge (conda-forge default, fetched from GitHub Releases CDN) — already the default in this fork |
 | **OpenSSL cert generation prompt** | `auto_setup_env.sh` hangs at openssl req | Patched to use `-subj "..."` flag (committed in this fork) |
 | **NVIDIA Omniverse EULA prompt** | `import isaacsim` hangs reading from stdin | `OMNI_KIT_ACCEPT_EULA=Y`, `PRIVACY_CONSENT=Y` |
 | **DDS domain mismatch** | `rt/lowstate` subscriber receives 0 messages | `ROS_DOMAIN_ID=1` (sim hard-codes domain 1), or call `ChannelFactoryInitialize(1)` |
@@ -152,16 +150,17 @@ in `auto_setup_env.sh` is the only file we touched in upstream territory.
 ## 8. Uninstall
 
 ```bash
-# Remove conda env (keeps Miniconda + repo)
+# Remove conda env (keeps Miniforge + repo)
 conda env remove -n unitree_sim_env
 
 # Remove cloned companion repos and assets
 rm -rf /workspace/isaaclab/datasets/{IsaacLab,cyclonedds,unitree_sdk2_python}
 rm -rf /workspace/isaaclab/datasets/unitree_sim_isaaclab/assets
 
-# Full clean (also removes Miniconda)
-rm -rf /root/miniconda3
+# Full clean (also removes Miniforge)
+rm -rf /root/miniforge3
 # manually edit /root/.bashrc to remove the `>>> conda initialize >>>` block
+# If migrating from a previous Miniconda install, also: rm -rf /root/miniconda3
 ```
 
 `/isaac-sim` and `/workspace/isaaclab` are untouched by this procedure.

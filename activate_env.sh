@@ -5,7 +5,7 @@
 # Sets the conda env, NVIDIA EULA acceptance, CycloneDDS paths, and DDS env vars
 # that must match between this sim container and the xr_teleoperate container.
 
-source /root/miniconda3/etc/profile.d/conda.sh
+source /root/miniforge3/etc/profile.d/conda.sh
 conda activate unitree_sim_env
 
 # /root/.bashrc의 Isaac Lab alias가 conda env의 python을 가로채는 것을 방지

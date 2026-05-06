@@ -5,7 +5,7 @@
 # Usage:
 #   ./setup_replica.sh                              # default: Isaac Sim 5.1, cu126
 #   ./setup_replica.sh --isaac-sim 5.0 --cuda cu128 # for RTX 5090 alt path
-#   ./setup_replica.sh --skip-apt --skip-miniconda  # if already done
+#   ./setup_replica.sh --skip-apt --skip-conda      # if already done
 #
 # See REPLICA_SETUP.md for full context.
 
@@ -17,7 +17,7 @@ ISAAC_VERSION="5.1"
 CUDA_VER="cu126"
 ENV_NAME="unitree_sim_env"
 SKIP_APT=0
-SKIP_MINICONDA=0
+SKIP_CONDA=0
 SKIP_AUTOSETUP=0
 SKIP_SMOKE=0
 
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
         --cuda)          CUDA_VER="$2"; shift 2 ;;
         --env-name)      ENV_NAME="$2"; shift 2 ;;
         --skip-apt)      SKIP_APT=1; shift ;;
-        --skip-miniconda) SKIP_MINICONDA=1; shift ;;
+        --skip-conda)    SKIP_CONDA=1; shift ;;
         --skip-autosetup) SKIP_AUTOSETUP=1; shift ;;
         --skip-smoke)    SKIP_SMOKE=1; shift ;;
         -h|--help)
@@ -68,25 +68,26 @@ else
     log "2/8 skipped (--skip-apt)"
 fi
 
-# ---------- 3. miniconda ----------
-if [ "$SKIP_MINICONDA" -eq 0 ]; then
-    if [ ! -x /root/miniconda3/bin/conda ]; then
-        log "3/8 installing Miniconda → /root/miniconda3"
+# ---------- 3. miniforge ----------
+# Miniforge is preferred over Miniconda: default channel is conda-forge (no
+# Anaconda ToS gate, friendly to corporate proxies). Same `conda` tooling.
+if [ "$SKIP_CONDA" -eq 0 ]; then
+    if [ ! -x /root/miniforge3/bin/conda ]; then
+        log "3/8 installing Miniforge → /root/miniforge3"
         cd /tmp
-        wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-        bash miniconda.sh -b -p /root/miniconda3
+        wget -q https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh \
+            -O miniforge.sh
+        bash miniforge.sh -b -p /root/miniforge3
         cd "$REPO_DIR"
-        /root/miniconda3/bin/conda init bash
+        /root/miniforge3/bin/conda init bash
     else
-        log "3/8 Miniconda already at /root/miniconda3 — skipping install"
+        log "3/8 Miniforge already at /root/miniforge3 — skipping install"
     fi
-    /root/miniconda3/bin/conda config --set solver libmamba
-    /root/miniconda3/bin/conda config --set auto_activate_base false
-    log "  accepting Anaconda channel ToS"
-    /root/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main || true
-    /root/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r || true
+    # libmamba is the default solver in recent Miniforge; setting explicitly is harmless
+    /root/miniforge3/bin/conda config --set solver libmamba
+    /root/miniforge3/bin/conda config --set auto_activate_base false
 else
-    log "3/8 skipped (--skip-miniconda)"
+    log "3/8 skipped (--skip-conda)"
 fi
 
 # ---------- 4. submodules ----------
@@ -121,7 +122,7 @@ chmod +x activate_env.sh run_sim.sh 2>/dev/null || true
 if [ "$SKIP_SMOKE" -eq 0 ]; then
     log "8/8 smoke test: import all critical modules"
     # Use absolute python path to bypass any /root/.bashrc alias
-    PY=/root/miniconda3/envs/${ENV_NAME}/bin/python
+    PY=/root/miniforge3/envs/${ENV_NAME}/bin/python
     OMNI_KIT_ACCEPT_EULA=Y PRIVACY_CONSENT=Y "$PY" - <<'PY'
 import importlib, sys
 mods = ["isaacsim", "torch", "isaaclab", "unitree_sdk2py", "cyclonedds",

@@ -13,7 +13,7 @@ configuration to work without extra wiring.
 |---|---|
 | Sim repo | `unitree_sim_isaaclab` (commit on `main`) |
 | Sim entry point | `python sim_main.py ...` |
-| Conda env | `unitree_sim_env` (Python 3.11) inside `/root/miniconda3/envs/` |
+| Conda env | `unitree_sim_env` (Python 3.11) inside `/root/miniforge3/envs/` |
 | Isaac Sim version | **5.1.0** (pip-installed in the conda env) |
 | Isaac Lab version | 0.46.6 (cloned at `/workspace/isaaclab/datasets/IsaacLab`) |
 | OS / kernel | Ubuntu 24.04 / Linux 6.8 |
@@ -251,7 +251,7 @@ PY
 |---|---|---|
 | `ros2 topic list` shows only `/parameter_events`, `/rosout` | Unitree topics use raw CycloneDDS types, not ROS 2 IDL | Use `unitree_sdk2py.ChannelSubscriber` to inspect (see §8.A) |
 | `ChannelSubscriber` receives 0 messages | Wrong DDS domain | Set `ROS_DOMAIN_ID=1` AND/OR pass `1` to `ChannelFactoryInitialize` |
-| `ModuleNotFoundError: teleimager.image_server` (sim side) | `python` shell alias routing to Isaac Sim bundled Python | `unalias python python3 pip pip3` after `conda activate`, or use absolute path `/root/miniconda3/envs/unitree_sim_env/bin/python` |
+| `ModuleNotFoundError: teleimager.image_server` (sim side) | `python` shell alias routing to Isaac Sim bundled Python | `unalias python python3 pip pip3` after `conda activate`, or use absolute path `/root/miniforge3/envs/unitree_sim_env/bin/python` |
 | Isaac Sim hangs on EULA prompt | Non-interactive EULA acceptance not set | `export OMNI_KIT_ACCEPT_EULA=Y; export PRIVACY_CONSENT=Y` |
 | ZMQ camera connect fails | Sim launched without `--enable_cameras` | Re-launch with the flag |
 | Multicast not seen across containers | Host firewall / non-host network | Use unicast peers config (`cyclonedds.xml` template in sim repo) |

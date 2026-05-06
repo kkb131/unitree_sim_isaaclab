@@ -49,7 +49,7 @@ Belt-and-suspenders launcher for `sim_main.py` that uses the conda env's
 absolute Python path. Robust against any future shell-alias regression:
 
 ```bash
-exec /root/miniconda3/envs/unitree_sim_env/bin/python sim_main.py "$@"
+exec /root/miniforge3/envs/unitree_sim_env/bin/python sim_main.py "$@"
 ```
 
 ### `cyclonedds.xml`
@@ -75,9 +75,9 @@ Replica setup guide for new machines. Covers GPU compatibility (5090 ↔
 ### `setup_replica.sh`
 
 Idempotent one-shot installer that drives a fresh machine through every
-step we hit during the first install: apt deps → Miniconda → conda ToS →
-EULA env vars → `auto_setup_env.sh` → smoke test. Re-runnable; skips
-already-completed phases.
+step we hit during the first install: apt deps → Miniforge (conda-forge
+default channel, no Anaconda ToS gate) → EULA env vars → `auto_setup_env.sh`
+→ smoke test. Re-runnable; skips already-completed phases.
 
 ### `CUSTOMIZATIONS.md`
 
