@@ -301,12 +301,65 @@ Issues encountered: <list or "none">
 
 ---
 
-## 9. Next Steps (Day 2 미진행)
+## 9. Day 2 검증 절차 (Reach task standalone boot)
 
-본 가이드 범위는 Day 1까지. Day 2부터는:
-- `robots/unitree.py`에 `UR10E_WITH_DG5F_HAND` ArticulationCfg 추가
-- `tasks/common_config/robot_configs.py`에 `UR10ERobotPresets` 추가
-- `tasks/ur10e_tasks/reach_ur10e_dg5f/` 신규 + `Isaac-Reach-UR10e-DG5F-Joint` gym register
-- `sim_main.py` `--robot_type ur10e` 분기
+Day 2에서는 `UR10e+DG-5F` ArticulationCfg + Reach task가 모두 `custom/` 하위에 들어왔고 `sim_main.py`/DDS는 안 건드림. 검증은 standalone boot script로:
 
-위 작업이 끝나면 본 가이드에도 sim_main 부팅 검증 절차가 추가될 예정. 그 전까진 본 가이드 §5 만으로 빌드 파이프라인의 재현성을 확보.
+```bash
+source custom/scripts/activate_env.sh
+python -u custom/scripts/test_ur10e_dg5f_boot.py --headless
+# 또는 viewport:
+# python -u custom/scripts/test_ur10e_dg5f_boot.py --livestream 2 --public_ip 127.0.0.1
+```
+
+`-u` (unbuffered) 권장 — Isaac Sim warning이 stdout buffering을 흔들어 우리 print가 먹힐 수 있음.
+
+### 통과 기준
+
+스크립트가 자체 assert로 다음을 검증 + 마지막에 `PASS — 50 steps executed without crash` 출력:
+
+| # | 항목 | 기대값 |
+|---|---|---|
+| 1 | `joint_names` 길이 | 26 |
+| 2 | UR10e arm joint 개수 (`shoulder/elbow/wrist` 매칭) | 6 |
+| 3 | DG-5F joint 개수 (`rj_dg_*` prefix) | 20 |
+| 4 | `wrist_3_link` ∈ `body_names` | True |
+| 5 | 50 zero-action step 무사고 | "PASS" 출력 |
+
+기대 `body_names` 27개 (참고):
+```
+world, shoulder_link, upper_arm_link, forearm_link, wrist_1_link, wrist_2_link, wrist_3_link,
+rl_dg_{1..5}_1, rl_dg_{1..5}_2, rl_dg_{1..5}_3, rl_dg_{1..5}_4
+```
+
+`tool0`/`flange`/`rl_dg_mount`/`rl_dg_palm`/`rl_dg_*_tip` 은 USD 빌드 시 `--merge-joints` 로 인해 흡수돼 **없음**. `wrist_3_link`이 EE body 역할.
+
+기대 `joint_names` 등장 순서 (Day 3 DDS index 매핑 참조):
+```
+[0..5]   shoulder_pan/lift, elbow, wrist_{1,2,3}
+[6..10]  rj_dg_{1..5}_1   ← finger * 첫 마디
+[11..15] rj_dg_{1..5}_2
+[16..20] rj_dg_{1..5}_3
+[21..25] rj_dg_{1..5}_4
+```
+
+### 실패 시 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| `ModuleNotFoundError: No module named 'custom'` | `__file__` 기반 sys.path 부트스트랩이 작동 안 한 환경. `cd <repo root> && PYTHONPATH=. python -u custom/scripts/test_ur10e_dg5f_boot.py --headless` |
+| `AttributeError: module 'mdp' has no attribute 'position_command_error'` | mdp/__init__.py 에서 `isaaclab_tasks.manager_based.manipulation.reach.mdp` re-export 누락 — 이미 패치되어있어야 함 |
+| `joint_names != 26` | USD가 다른 빌드 (e.g., --merge-joints 빠진) → 본 가이드 §4 build script 재실행 |
+| `wrist_3_link not in body_names` | --merge-joints 가 다르게 작용했거나 USD root 다름. body_names 출력 보고 `reach_ur10e_dg5f_env_cfg.py` 의 `DEFAULT_EE_BODY` 후보 (`tool0`, `rl_dg_palm` 등) 로 변경 |
+| `print` 출력 안 보임 | stdout buffering — 반드시 `python -u` 사용 |
+| Isaac Sim 부팅 5분 이상 hang | 첫 부팅은 USD 캐시 만들기 때문에 시간 소요 가능. 두 번째부터는 30초 이내 |
+
+## 10. Next Steps (Day 3 미진행)
+
+Day 3 부터는 DDS round-trip 작업:
+- `dds/dg5f_dds.py` (rt/dg5f/{state,cmd}) 신규
+- `dds/dds_create.py` + `action_provider/action_provider_dds.py` 수정 (`--robot_type ur10e` + `--enable_dg5f_dds` 분기)
+- `sim_main.py` argparse 확장
+- 검증: `rt/lowstate` (motor[0:6]) + `rt/dg5f/state` (motor[0:20]) publish 확인
+
+Day 3 진입 시 본 가이드에 §B. Day 3 검증 섹션이 추가될 예정.
