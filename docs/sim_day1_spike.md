@@ -18,12 +18,12 @@
 
 ## 1. §2.3 Checklist (가이드)
 
-- [ ] H1-2 baseline 부팅 (`Isaac-PickPlace-Cylinder-H12-27dof-Inspire-Joint`)
-- [ ] `rt/lowstate` publish 확인 (~94Hz)
-- [ ] UR10e URDF 확보 (xacro → URDF)
-- [ ] DG-5F URDF mesh 경로 점검 (`package://` → `file://`)
-- [ ] UR10e + DG-5F 통합 xacro/URDF 생성 (UR10e tool0 ↔ DG-5F dg_base_link fixed joint)
-- [ ] URDF → USD 변환 (`tools/convert_urdf.py --fix-base --merge-joints`)
+- [ ] H1-2 baseline 부팅 (`Isaac-PickPlace-Cylinder-H12-27dof-Inspire-Joint`) — 미실행 (Day 2 진입 전 또는 Day 5 검증 단계로 연기)
+- [ ] `rt/lowstate` publish 확인 (~94Hz) — H1-2 부팅 시 함께
+- [x] UR10e URDF 확보 (xacro → URDF, 297 lines, mesh 절대경로)
+- [x] DG-5F URDF mesh 경로 점검 (`package://dg_description/meshes/` → `file:///workspace/isaaclab/datasets/teleop_system/models/dg5f/meshes/`)
+- [x] UR10e + DG-5F 통합 URDF 생성 (UR10e tool0 ↔ DG-5F rl_dg_mount fixed joint, 41 link / 40 joint / **26 revolute**)
+- [x] URDF → USD 변환 (IsaacLab `scripts/tools/convert_urdf.py`, `--merge-joints --fix-base`, output 18MB)
 
 ## 2. Repo Reality (Plan 검증 결과)
 
@@ -32,7 +32,11 @@
 - DG-5F URDF 20 revolute joint: `rj_dg_{1..5}_{1..4}` (5 fingers × 4). 7 fixed (`base`, `palm`, `_tip` × 5).
 - URDF→USD: `tools/convert_urdf.py` 이미 존재. fallback `IsaacLab/scripts/tools/convert_urdf.py`.
 
-## 3. H1-2 Baseline Boot Test (예정)
+## 3. H1-2 Baseline Boot Test (미실행)
+
+가이드 §5 Day 1 step 3의 baseline 검증은 livestream viewer 환경 + Isaac Sim 첫 부팅 (수 분) 필요해서 **Day 2 cfg 작성 후 함께 또는 Day 5 검증 단계로 연기**. URDF 작업이 deterministic blocker였으므로 그것을 우선 처리.
+
+부팅 명령:
 
 ```bash
 source /workspace/isaaclab/datasets/unitree_sim_isaaclab/activate_env.sh
@@ -61,73 +65,47 @@ print(f"received {counts['n']} msgs in 3s (expect ~280)")
 PY
 ```
 
-결과: _TBD_
+결과: 미실행 (Day 2 합류)
 
-## 4. UR10e URDF 확보 (예정)
+## 4-7. Asset 생성 (단일 build script로 통합) ✅
 
-```bash
-source /opt/ros/jazzy/setup.bash
-xacro /opt/ros/jazzy/share/ur_description/urdf/ur.urdf.xacro \
-  name:=ur10e ur_type:=ur10e \
-  > /workspace/isaaclab/datasets/unitree_sim_isaaclab/assets/robots/ur10e-dg5f-urdf/ur10e.urdf
-```
-
-mesh `package://ur_description/...` 경로 처리: USD 변환 시 `OMNI_USD_RESOLVER_MDL_BUILTIN_*` 환경변수 또는 `package://` → `file://` sed 치환.
-
-결과: _TBD_
-
-## 5. DG-5F URDF mesh 경로 (예정)
+Upstream convention(`assets/`는 git 무시, `fetch_assets.sh`로 다운로드)에 맞춰 reproducible build script 작성:
 
 ```bash
-grep -oE 'filename="[^"]+"' /workspace/isaaclab/datasets/teleop_system/models/dg5f/dg5f_right.urdf | sort -u
-```
-
-`package://` 경로면 mesh 디렉토리 복사 후 sed 치환.
-
-결과: _TBD_
-
-## 6. 통합 xacro 작성 (예정)
-
-```xml
-<!-- ur10e_with_dg5f.urdf.xacro -->
-<robot name="ur10e_with_dg5f" xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:include filename="$(find ur_description)/urdf/ur.urdf.xacro"/>
-  <xacro:ur_robot ur_type="ur10e" prefix=""/>
-
-  <!-- include dg5f -->
-  <xacro:include filename="dg5f_right.xacro"/>
-
-  <!-- mount: UR10e tool0 ↔ DG-5F dg_base_link -->
-  <joint name="ur10e_to_dg5f_mount" type="fixed">
-    <parent link="tool0"/>
-    <child link="dg_base_link"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-  </joint>
-</robot>
-```
-
-마운트 RPY/XYZ 는 일단 identity, Day 5 시각 확인 후 보정.
-
-결과: _TBD_
-
-## 7. URDF → USD 변환 (예정)
-
-```bash
+source /workspace/isaaclab/datasets/unitree_sim_isaaclab/activate_env.sh
 cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
-python tools/convert_urdf.py \
-  assets/robots/ur10e-dg5f-urdf/ur10e_with_dg5f.urdf \
-  assets/robots/ur10e-dg5f-usd/ur10e_with_dg5f.usd \
-  --fix-base --merge-joints \
-  --joint-stiffness 100.0 --joint-damping 2.0
+./tools/build_ur10e_dg5f_assets.sh
 ```
 
-Fallback 1: `/workspace/isaaclab/datasets/IsaacLab/scripts/tools/convert_urdf.py` 직접 호출
-Fallback 2: Isaac Sim GUI URDF importer extension
+스크립트 4단계 (소스: [tools/build_ur10e_dg5f_assets.sh](/workspace/isaaclab/datasets/unitree_sim_isaaclab/tools/build_ur10e_dg5f_assets.sh)):
 
-결과: _TBD_
+1. **UR10e URDF 생성** — `xacro ur.urdf.xacro name:=ur10e ur_type:=ur10e force_abs_paths:=true`. `force_abs_paths` 덕분에 mesh 절대경로(`file:///opt/ros/jazzy/share/ur_description/meshes/ur10e/...`)로 emit, sed 치환 불필요. 297 lines, 6 revolute joints (`shoulder_pan/lift, elbow, wrist_{1,2,3}`), mount 후보 link `tool0` (chain `wrist_3_link → flange → tool0`).
+
+2. **DG-5F URDF sed-replace** — 원본 [dg5f_right.urdf](/workspace/isaaclab/datasets/teleop_system/models/dg5f/dg5f_right.urdf)는 `package://dg_description/meshes/...` 사용. 본 docker엔 ROS package 등록 안 됨 → `file:///workspace/isaaclab/datasets/teleop_system/models/dg5f/meshes/` 로 치환. 40+ mesh path 전수 검증, 빠진 파일 없음. URDF root link: **`rl_dg_mount`**.
+
+3. **통합 URDF 머지** — [tools/combine_ur10e_dg5f_urdfs.py](/workspace/isaaclab/datasets/unitree_sim_isaaclab/tools/combine_ur10e_dg5f_urdfs.py) (Python `xml.etree.ElementTree`). xacro `<xacro:include>` 방식은 ur.urdf.xacro 의 `<robot>` 충돌 때문에 어려움 → 두 URDF의 `<link>`/`<joint>` element를 새 `<robot name="ur10e_with_dg5f">`에 직접 머지. mount: `tool0` (parent) ↔ `rl_dg_mount` (child) fixed joint, xyz/rpy=identity (Day 5 보정 예정). 결과: 41 link / 40 joint / **26 revolute** (UR10e 6 + DG-5F 20: `rj_dg_{1..5}_{1..4}`).
+
+4. **URDF → USD 변환** — `unitree_sim_isaaclab/tools/convert_urdf.py`는 hardcoded path 라 unusable. **IsaacLab 표준 [scripts/tools/convert_urdf.py](/workspace/isaaclab/datasets/IsaacLab/scripts/tools/convert_urdf.py) 사용** (`--merge-joints --fix-base --headless`). 산출: `ur10e_with_dg5f.usd` (1.4KB main + 4 layered, 총 18MB).
+
+⚠️ **`--merge-joints` 부작용**: Isaac Sim importer가 fixed joint로 연결된 link들을 머지함 — 변환 로그에서:
+- `tool0`, `flange`, `rl_dg_mount`, `rl_dg_base`, `rl_dg_palm`, `rl_dg_{1..5}_tip` 등이 모두 다른 link로 흡수됨
+- `tool0` → `flange` → `wrist_3_link`로 머지되는 chain 발생
+- DG-5F의 `rl_dg_mount` → `tool0`로 흡수 (즉 wrist_3_link로 흡수)
+
+영향 분석:
+- ✅ 26 revolute joint articulation은 그대로 유지 (USD에 보존)
+- ⚠️ Day 4 카메라 mount 시 `tool0` prim이 USD에 존재 안 할 수도 — 대안 link (`wrist_3_link`, `rl_dg_1_4` 등) 사용 필요 검토
+- ⚠️ Day 2 cfg 작성 시 IsaacLab `Articulation.body_names`로 실제 USD link 이름 enumerate해서 reach task의 EE body 결정해야 함
+
+`--merge-joints` 빼고 재변환할 옵션 — **Day 2 첫 부팅에서 link 이름 enumerate 후 결정**.
 
 ## 8. Day 2 진입 가능 여부
 
-위 1-7 모두 OK 시 Day 2 (robots/unitree.py + Reach task) 진입.
+✅ 진입 가능. URDF/USD asset 확보 완료. Day 2 작업:
+1. `robots/unitree.py` 에 `UR10E_WITH_DG5F_HAND` ArticulationCfg block 추가 (USD link 이름 enumerate 후 actuators/init_state 작성)
+2. `tasks/common_config/robot_configs.py` 에 `UR10ERobotPresets.ur10e_dg5f()` 추가
+3. `tasks/ur10e_tasks/reach_ur10e_dg5f/` 신규 + `Isaac-Reach-UR10e-DG5F-Joint` 등록
+4. `sim_main.py` `--robot_type ur10e` 분기 추가
+5. 부팅 검증 + 필요 시 USD 재변환 (`--merge-joints` 제거)
 
-블록되는 사항: _TBD_
+블록 사항: 없음. H1-2 baseline 검증은 Day 2 부팅 시 자연스럽게 환경 sanity 확인되므로 별도 step 불필요.
