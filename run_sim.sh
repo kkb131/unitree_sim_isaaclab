@@ -9,5 +9,5 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/activate_env.sh"
+source "$SCRIPT_DIR/custom/scripts/activate_env.sh"
 exec /root/miniforge3/envs/unitree_sim_env/bin/python "$SCRIPT_DIR/sim_main.py" "$@"

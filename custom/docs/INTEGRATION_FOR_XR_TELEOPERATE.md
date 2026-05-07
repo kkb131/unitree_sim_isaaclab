@@ -129,7 +129,7 @@ pointed at `<public_ip>` (default port 8211 signaling + 49100+ data).
 
 ```bash
 # On the sim host:
-source /workspace/isaaclab/datasets/unitree_sim_isaaclab/activate_env.sh
+source /workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/scripts/activate_env.sh
 cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
 python sim_main.py \
   --task Isaac-PickPlace-Cylinder-G129-Dex3-Joint \
@@ -263,7 +263,7 @@ PY
 
 ```bash
 # Sim host shell:
-source /workspace/isaaclab/datasets/unitree_sim_isaaclab/activate_env.sh
+source /workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/scripts/activate_env.sh
 cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
 python sim_main.py --task Isaac-PickPlace-Cylinder-G129-Dex3-Joint \
   --enable_dex3_dds --robot_type g129 --device cuda:0 --enable_cameras \

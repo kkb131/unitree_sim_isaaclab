@@ -7,8 +7,8 @@ base image), so it can drive `xr_teleoperate` over DDS.
 Companion docs:
 - [CUSTOMIZATIONS.md](CUSTOMIZATIONS.md) — what we changed vs upstream and why
 - [INTEGRATION_FOR_XR_TELEOPERATE.md](INTEGRATION_FOR_XR_TELEOPERATE.md) — DDS / topic / port spec for the teleop side
-- [activate_env.sh](activate_env.sh) — conda + DDS env activation
-- [run_sim.sh](run_sim.sh) — absolute-path-python wrapper to bypass shell aliases
+- [activate_env.sh](../scripts/activate_env.sh) — conda + DDS env activation
+- [run_sim.sh](../../run_sim.sh) — absolute-path-python wrapper to bypass shell aliases
 
 ---
 
@@ -57,15 +57,15 @@ git clone <YOUR_FORK_URL> unitree_sim_isaaclab
 cd unitree_sim_isaaclab
 
 # 2. Run the automated installer
-chmod +x setup_replica.sh
-./setup_replica.sh
+chmod +x custom/scripts/setup_replica.sh
+./custom/scripts/setup_replica.sh
 
 # Optional flags:
-#   ./setup_replica.sh --isaac-sim 5.0 --cuda cu128
-#   ./setup_replica.sh --skip-apt          # if apt deps already installed
-#   ./setup_replica.sh --skip-conda        # if /root/miniforge3 already exists
-# RTX 5090이면: ./setup_replica.sh --isaac-sim 5.1 --cuda cu128
-# 또는 (RTX 5090에 더 검증된 경로): ./setup_replica.sh --isaac-sim 5.0 --cuda cu128
+#   ./custom/scripts/setup_replica.sh --isaac-sim 5.0 --cuda cu128
+#   ./custom/scripts/setup_replica.sh --skip-apt    # if apt deps already installed
+#   ./custom/scripts/setup_replica.sh --skip-conda  # if /root/miniforge3 already exists
+# RTX 5090이면: ./custom/scripts/setup_replica.sh --isaac-sim 5.1 --cuda cu128
+# 또는 (RTX 5090에 더 검증된 경로): ./custom/scripts/setup_replica.sh --isaac-sim 5.0 --cuda cu128
 ```
 
 Total wall-clock time on a 100 Mbps link: **30–60 minutes** (most of it is
@@ -74,7 +74,7 @@ PyTorch + Isaac Sim wheel downloads, ~20 GB).
 After completion, verify with:
 
 ```bash
-source ./activate_env.sh
+source ./custom/scripts/activate_env.sh
 python -c "import isaacsim, torch; print(torch.cuda.get_device_name(0), torch.cuda.is_available())"
 ./run_sim.sh --task Isaac-PickPlace-Cylinder-G129-Dex3-Joint \
   --enable_dex3_dds --robot_type g129 --headless --no_render \
@@ -142,7 +142,7 @@ bash auto_setup_env.sh 5.1 unitree_sim_env cu126   # adjust args for your GPU
 See [CUSTOMIZATIONS.md](CUSTOMIZATIONS.md) for the full list with rationale.
 Summary:
 - **Modified**: `auto_setup_env.sh` (openssl `-subj`)
-- **Added**: `activate_env.sh`, `run_sim.sh`, `cyclonedds.xml`, `setup_replica.sh`, `INTEGRATION_FOR_XR_TELEOPERATE.md`, `REPLICA_SETUP.md`, `CUSTOMIZATIONS.md`
+- **Added**: `run_sim.sh`, `cyclonedds.xml`, `custom/scripts/activate_env.sh`, `custom/scripts/setup_replica.sh`, `custom/docs/INTEGRATION_FOR_XR_TELEOPERATE.md`, `custom/docs/REPLICA_SETUP.md`, `custom/docs/CUSTOMIZATIONS.md`, `custom/docs/CONDA_SSL_CORP_CA.md`
 
 When upstream releases changes, rebase / merge carefully — the openssl line
 in `auto_setup_env.sh` is the only file we touched in upstream territory.

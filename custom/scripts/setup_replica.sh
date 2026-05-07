@@ -2,12 +2,12 @@
 # setup_replica.sh — one-shot replica installer for unitree_sim_isaaclab.
 # Idempotent: safe to re-run after partial failures.
 #
-# Usage:
-#   ./setup_replica.sh                              # default: Isaac Sim 5.1, cu126
-#   ./setup_replica.sh --isaac-sim 5.0 --cuda cu128 # for RTX 5090 alt path
-#   ./setup_replica.sh --skip-apt --skip-conda      # if already done
+# Usage (run from repo root):
+#   ./custom/scripts/setup_replica.sh                              # default: Isaac Sim 5.1, cu126
+#   ./custom/scripts/setup_replica.sh --isaac-sim 5.0 --cuda cu128 # for RTX 5090 alt path
+#   ./custom/scripts/setup_replica.sh --skip-apt --skip-conda      # if already done
 #
-# See REPLICA_SETUP.md for full context.
+# See custom/docs/REPLICA_SETUP.md for full context.
 
 set -e
 set -o pipefail
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
 
 log()  { echo -e "\n\033[1;36m[replica]\033[0m $*"; }
@@ -115,8 +115,8 @@ fi
 
 # ---------- 7. activation helper sanity ----------
 log "7/8 verifying activate_env.sh wires conda + DDS domain 1"
-[ -f activate_env.sh ] || fail "activate_env.sh missing — re-pull this fork"
-chmod +x activate_env.sh run_sim.sh 2>/dev/null || true
+[ -f custom/scripts/activate_env.sh ] || fail "custom/scripts/activate_env.sh missing — re-pull this fork"
+chmod +x custom/scripts/activate_env.sh run_sim.sh 2>/dev/null || true
 
 # ---------- 8. smoke test ----------
 if [ "$SKIP_SMOKE" -eq 0 ]; then
@@ -148,7 +148,7 @@ cat <<EOF
 
 To run the simulator:
 
-    source ${REPO_DIR}/activate_env.sh
+    source ${REPO_DIR}/custom/scripts/activate_env.sh
     cd ${REPO_DIR}
     python sim_main.py --task Isaac-PickPlace-Cylinder-G129-Dex3-Joint \\
         --enable_dex3_dds --robot_type g129 --device cuda:0 \\

@@ -39,7 +39,7 @@
 부팅 명령:
 
 ```bash
-source /workspace/isaaclab/datasets/unitree_sim_isaaclab/activate_env.sh
+source /workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/scripts/activate_env.sh
 cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
 python sim_main.py \
   --task Isaac-PickPlace-Cylinder-H12-27dof-Inspire-Joint \
@@ -72,7 +72,7 @@ PY
 Upstream convention(`assets/`는 git 무시, `fetch_assets.sh`로 다운로드)에 맞춰 reproducible build script 작성:
 
 ```bash
-source /workspace/isaaclab/datasets/unitree_sim_isaaclab/activate_env.sh
+source /workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/scripts/activate_env.sh
 cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
 ./tools/build_ur10e_dg5f_assets.sh
 ```

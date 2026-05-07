@@ -31,7 +31,7 @@ single-line patch (or pick a more meaningful subject if needed).
 
 ## 2. New files (added by us)
 
-### `activate_env.sh`
+### `custom/scripts/activate_env.sh`
 
 Sourceable shell helper that:
 - activates conda env `unitree_sim_env`,
@@ -40,7 +40,7 @@ Sourceable shell helper that:
 - sets `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` and **`ROS_DOMAIN_ID=1`** (the sim hard-codes `ChannelFactoryInitialize(1)`),
 - runs `unalias python python3 pip pip3` to defeat `/root/.bashrc`'s Isaac Lab aliases that otherwise route `python` to `/isaac-sim/python.sh` (a non-conda interpreter that doesn't see our pip-installed deps).
 
-Use it with `source activate_env.sh` from any new shell before launching the
+Use it with `source custom/scripts/activate_env.sh` from any new shell before launching the
 sim.
 
 ### `run_sim.sh`
@@ -72,7 +72,7 @@ person who owns the `xr_teleoperate` container.
 Replica setup guide for new machines. Covers GPU compatibility (5090 ↔
 3080), step-by-step install, and pitfalls.
 
-### `setup_replica.sh`
+### `custom/scripts/setup_replica.sh`
 
 Idempotent one-shot installer that drives a fresh machine through every
 step we hit during the first install: apt deps → Miniforge (conda-forge
