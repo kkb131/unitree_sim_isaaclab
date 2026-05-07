@@ -74,16 +74,16 @@ Upstream convention(`assets/`는 git 무시, `fetch_assets.sh`로 다운로드)�
 ```bash
 source /workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/scripts/activate_env.sh
 cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
-./tools/build_ur10e_dg5f_assets.sh
+./custom/tools/build_ur10e_dg5f_assets.sh
 ```
 
-스크립트 4단계 (소스: [tools/build_ur10e_dg5f_assets.sh](/workspace/isaaclab/datasets/unitree_sim_isaaclab/tools/build_ur10e_dg5f_assets.sh)):
+스크립트 4단계 (소스: [custom/tools/build_ur10e_dg5f_assets.sh](/workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/tools/build_ur10e_dg5f_assets.sh)):
 
 1. **UR10e URDF 생성** — `xacro ur.urdf.xacro name:=ur10e ur_type:=ur10e force_abs_paths:=true`. `force_abs_paths` 덕분에 mesh 절대경로(`file:///opt/ros/jazzy/share/ur_description/meshes/ur10e/...`)로 emit, sed 치환 불필요. 297 lines, 6 revolute joints (`shoulder_pan/lift, elbow, wrist_{1,2,3}`), mount 후보 link `tool0` (chain `wrist_3_link → flange → tool0`).
 
 2. **DG-5F URDF sed-replace** — 원본 [dg5f_right.urdf](/workspace/isaaclab/datasets/teleop_system/models/dg5f/dg5f_right.urdf)는 `package://dg_description/meshes/...` 사용. 본 docker엔 ROS package 등록 안 됨 → `file:///workspace/isaaclab/datasets/teleop_system/models/dg5f/meshes/` 로 치환. 40+ mesh path 전수 검증, 빠진 파일 없음. URDF root link: **`rl_dg_mount`**.
 
-3. **통합 URDF 머지** — [tools/combine_ur10e_dg5f_urdfs.py](/workspace/isaaclab/datasets/unitree_sim_isaaclab/tools/combine_ur10e_dg5f_urdfs.py) (Python `xml.etree.ElementTree`). xacro `<xacro:include>` 방식은 ur.urdf.xacro 의 `<robot>` 충돌 때문에 어려움 → 두 URDF의 `<link>`/`<joint>` element를 새 `<robot name="ur10e_with_dg5f">`에 직접 머지. mount: `tool0` (parent) ↔ `rl_dg_mount` (child) fixed joint, xyz/rpy=identity (Day 5 보정 예정). 결과: 41 link / 40 joint / **26 revolute** (UR10e 6 + DG-5F 20: `rj_dg_{1..5}_{1..4}`).
+3. **통합 URDF 머지** — [custom/tools/combine_ur10e_dg5f_urdfs.py](/workspace/isaaclab/datasets/unitree_sim_isaaclab/custom/tools/combine_ur10e_dg5f_urdfs.py) (Python `xml.etree.ElementTree`). xacro `<xacro:include>` 방식은 ur.urdf.xacro 의 `<robot>` 충돌 때문에 어려움 → 두 URDF의 `<link>`/`<joint>` element를 새 `<robot name="ur10e_with_dg5f">`에 직접 머지. mount: `tool0` (parent) ↔ `rl_dg_mount` (child) fixed joint, xyz/rpy=identity (Day 5 보정 예정). 결과: 41 link / 40 joint / **26 revolute** (UR10e 6 + DG-5F 20: `rj_dg_{1..5}_{1..4}`).
 
 4. **URDF → USD 변환** — `unitree_sim_isaaclab/tools/convert_urdf.py`는 hardcoded path 라 unusable. **IsaacLab 표준 [scripts/tools/convert_urdf.py](/workspace/isaaclab/datasets/IsaacLab/scripts/tools/convert_urdf.py) 사용** (`--merge-joints --fix-base --headless`). 산출: `ur10e_with_dg5f.usd` (1.4KB main + 4 layered, 총 18MB).
 
