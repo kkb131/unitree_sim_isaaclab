@@ -354,12 +354,58 @@ rl_dg_{1..5}_1, rl_dg_{1..5}_2, rl_dg_{1..5}_3, rl_dg_{1..5}_4
 | `print` 출력 안 보임 | stdout buffering — 반드시 `python -u` 사용 |
 | Isaac Sim 부팅 5분 이상 hang | 첫 부팅은 USD 캐시 만들기 때문에 시간 소요 가능. 두 번째부터는 30초 이내 |
 
-## 10. Next Steps (Day 3 미진행)
+## 10. Day 3 검증 절차 (DDS round-trip)
 
-Day 3 부터는 DDS round-trip 작업:
-- `dds/dg5f_dds.py` (rt/dg5f/{state,cmd}) 신규
-- `dds/dds_create.py` + `action_provider/action_provider_dds.py` 수정 (`--robot_type ur10e` + `--enable_dg5f_dds` 분기)
-- `sim_main.py` argparse 확장
-- 검증: `rt/lowstate` (motor[0:6]) + `rt/dg5f/state` (motor[0:20]) publish 확인
+Day 3에서는 4개 DDS topic이 동작합니다 — `rt/lowstate`, `rt/lowcmd` (UR10e arm 6 motor), `rt/dg5f/state`, `rt/dg5f/cmd` (DG-5F hand 20 motor). sim_main.py 통한 부팅 + 외부 publisher 스크립트로 검증.
 
-Day 3 진입 시 본 가이드에 §B. Day 3 검증 섹션이 추가될 예정.
+### 사전 셋업
+
+build script로 USD가 만들어진 상태 + `custom/dds/dg5f_dds.py`, `custom/tasks/common_observations/{dg5f,ur10e}_state.py` 등 Day 3 신규 파일 + `sim_main.py` / `dds/dds_create.py` / `action_provider/action_provider_dds.py` 의 dispatch hook 적용 상태여야 합니다 (`git checkout feat/ur10e-dg5f-sim` 그대로 가져오면 모두 포함).
+
+### 부팅
+
+Terminal 1 (sim):
+```bash
+source custom/scripts/activate_env.sh
+python -u sim_main.py \
+    --task Isaac-Reach-UR10e-DG5F-Joint \
+    --robot_type ur10e --enable_dg5f_dds \
+    --device cuda:0 --headless --no_render
+```
+
+Terminal 2 (단방향 publish 검증):
+```bash
+source custom/scripts/activate_env.sh
+python custom/scripts/test_dds_listen.py --duration 3.0
+```
+
+Terminal 3 (round-trip 검증):
+```bash
+source custom/scripts/activate_env.sh
+python custom/scripts/test_dg5f_pub.py --q 0.3 --duration 3.0
+python custom/scripts/test_lowcmd_pub.py --duration 5.0
+```
+
+### 통과 기준
+
+| # | 항목 | 통과 기준 |
+|---|---|---|
+| 1 | `sim_main` 부팅 | "DG-5F DDS node initialized (20 motors)" + "[DDSActionProvider] DDS communication initialized" + "ur10e_state/dg5f_state DDS instance acquired" 모두 출력 |
+| 2 | `rt/lowstate` rate | ≥ 50 Hz (실측 ~97 Hz), `motor[0:6].q` 모두 valid float |
+| 3 | `rt/dg5f/state` rate | ≥ 20 Hz (실측 ~97 Hz), `motor[0:20].q` 모두 valid float |
+| 4 | DG-5F round-trip | `q=0.3` publish 후 `motor[0:20].q` 다수 0.3 추종 (일부 finger 4/5 joint은 mass/limit으로 부분 수렴 — Day 5 보정) |
+| 5 | UR10e arm round-trip | publish 후 `rt/lowstate motor[0:6].q` 가 target 추종 (5/6 joint err < 0.07 rad — shoulder_lift만 swing time 부족) |
+
+### 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| sim_main 부팅 시 `ModuleNotFoundError: No module named 'custom.dds.dg5f_dds'` | 작업 dir이 repo root 아님. `cd /workspace/isaaclab/datasets/unitree_sim_isaaclab` 후 재실행 |
+| `[DDSActionProvider] DDS initialization failed: 'NoneType' has no attribute ...` | `dds_create.py`가 `register_object("ur10e", ...)` 못 함. argparse `--robot_type ur10e --enable_dg5f_dds` 둘 다 켰는지 확인 |
+| `rt/dg5f/state` 0 msg | obs writer가 호출 안 됨 → reach env_cfg `DDSStateGroup` 추가 됐는지 확인. 또는 `dg5f_state.py` 가 `dds_manager.get_object("dg5f")` 받지 못함 |
+| HandCmd_ publish 후 `motor_cmd` 빈 array | publisher가 20 slot 명시 init 안 함. `cmd.motor_cmd = [MotorCmd_() for _ in range(20)]` |
+| Multi-host docker (다른 PC에서 sim, 또 다른 PC에서 publisher) | `cyclonedds.xml` unicast peers 명시 필요. 단일 host `--network=host`라면 multicast 자동 |
+
+## 11. Next Steps (Day 4 미진행)
+
+Day 4: Camera scene mount + ZMQ/WebRTC publish (head/right_wrist/left_wrist 3개, 포트 55555-55557 + 60001-60003 그대로). 그 이후 Day 5: PD tuning + finger settling 보정.

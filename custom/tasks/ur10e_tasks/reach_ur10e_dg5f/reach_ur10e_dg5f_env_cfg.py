@@ -24,6 +24,7 @@ from isaaclab.sim import GroundPlaneCfg, DomeLightCfg
 from isaaclab.utils import configclass
 
 from custom.tasks.common_config.ur10e_configs import UR10ERobotPresets
+from custom.tasks.common_observations import dg5f_state, ur10e_state
 
 from . import mdp
 
@@ -72,13 +73,17 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    """Direct joint-position action over all 26 joints (arm + hand)."""
+    """Direct joint-position action over all 26 joints (arm + hand).
+
+    `use_default_offset=False` so DDS commands are interpreted as absolute joint
+    angles (matches the build guide spec; xr_teleop sends absolute targets).
+    """
 
     arm_action = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*"],
         scale=1.0,
-        use_default_offset=True,
+        use_default_offset=False,
     )
 
 
@@ -95,7 +100,23 @@ class ObservationsCfg:
             self.enable_corruption = False
             self.concatenate_terms = True
 
+    @configclass
+    class DDSStateGroup(ObsGroup):
+        """Side-effect terms that publish joint state to DDS each step.
+
+        `concatenate_terms=False` so these don't pollute the policy obs vector;
+        the observation manager still calls them every step.
+        """
+
+        ur10e_arm = ObsTerm(func=ur10e_state.get_ur10e_arm_joint_states)
+        dg5f_hand = ObsTerm(func=dg5f_state.get_robot_dg5f_joint_states)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
+
     policy: PolicyCfg = PolicyCfg()
+    dds: DDSStateGroup = DDSStateGroup()
 
 
 @configclass

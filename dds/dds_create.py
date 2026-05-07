@@ -11,9 +11,17 @@ def create_dds_objects(args_cli,env):
         dds_manager.register_object("g129", g1_robot)
         publish_names.append("g129")
         subscribe_names.append("g129")
+    elif args_cli.robot_type == "ur10e":
+        # Reuse G1RobotDDS — LowState_/LowCmd_.motor_state is a variable-length
+        # sequence so writing 6 motor entries (UR10e arm) is supported natively.
+        from dds.g1_robot_dds import G1RobotDDS
+        ur10e_robot = G1RobotDDS(node_name="ur10e_robot")
+        dds_manager.register_object("ur10e", ur10e_robot)
+        publish_names.append("ur10e")
+        subscribe_names.append("ur10e")
     if args_cli.enable_dex3_dds:
         from dds.dex3_dds import Dex3DDS
-        dex3 = Dex3DDS() 
+        dex3 = Dex3DDS()
         dds_manager.register_object("dex3", dex3)
         publish_names.append("dex3")
         subscribe_names.append("dex3")
@@ -29,6 +37,12 @@ def create_dds_objects(args_cli,env):
         dds_manager.register_object("inspire", inspire)
         publish_names.append("inspire")
         subscribe_names.append("inspire")
+    elif args_cli.enable_dg5f_dds:
+        from custom.dds.dg5f_dds import DG5FDDS
+        dg5f = DG5FDDS()
+        dds_manager.register_object("dg5f", dg5f)
+        publish_names.append("dg5f")
+        subscribe_names.append("dg5f")
     if "Wholebody" in args_cli.task or args_cli.enable_wholebody_dds:
         from dds.commands_dds import RunCommandDDS
         run_command_dds = RunCommandDDS()

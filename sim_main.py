@@ -34,6 +34,7 @@ parser.add_argument("--robot_type", type=str, default="g129", help="robot type")
 parser.add_argument("--enable_dex1_dds", action="store_true", help="enable gripper DDS")
 parser.add_argument("--enable_dex3_dds", action="store_true", help="enable dexterous hand DDS")
 parser.add_argument("--enable_inspire_dds", action="store_true", help="enable inspire hand DDS")
+parser.add_argument("--enable_dg5f_dds", action="store_true", help="enable DG-5F (Tesollo) hand DDS")
 parser.add_argument("--stats_interval", type=float, default=10.0, help="statistics print interval (seconds)")
 
 parser.add_argument("--file_path", type=str, default="/home/unitree/Code/xr_teleoperate/teleop/utils/data", help="file path (when action_source=file)")
@@ -85,9 +86,10 @@ if args_cli.no_render:
 else:
     os.environ["LIVESTREAM"] = "0"
 
-if args_cli.enable_dex3_dds and args_cli.enable_dex1_dds and args_cli.enable_inspire_dds:
-    print("Error: enable_dex3_dds and enable_dex1_dds and enable_inspire_dds cannot be enabled at the same time")
-    print("Please select one of the options")
+if sum([args_cli.enable_dex3_dds, args_cli.enable_dex1_dds,
+        args_cli.enable_inspire_dds, args_cli.enable_dg5f_dds]) > 1:
+    print("Error: only one of --enable_dex3_dds / --enable_dex1_dds / "
+          "--enable_inspire_dds / --enable_dg5f_dds may be set at a time")
     sys.exit(1)
 
 
@@ -102,6 +104,7 @@ from layeredcontrol.robot_control_system import (
 
 from dds.reset_pose_dds import *
 import tasks
+import custom.tasks.ur10e_tasks  # registers Isaac-Reach-UR10e-DG5F-Joint
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
 from tools.augmentation_utils import (
@@ -678,3 +681,6 @@ if __name__ == "__main__":
 # python sim_main.py --device cpu  --enable_cameras  --task Isaac-PickPlace-Cylinder-H12-27dof-Inspire-Joint  --enable_inspire_dds --robot_type h1_2
 # python sim_main.py --device cpu  --enable_cameras  --task Isaac-PickPlace-RedBlock-H12-27dof-Inspire-Joint  --enable_inspire_dds --robot_type h1_2
 # python sim_main.py --device cpu  --enable_cameras  --task Isaac-Stack-RgyBlock-H12-27dof-Inspire-Joint --enable_inspire_dds --robot_type h1_2
+
+# UR10e + Tesollo DG-5F (custom)
+# python sim_main.py --device cuda:0 --enable_cameras --task Isaac-Reach-UR10e-DG5F-Joint --enable_dg5f_dds --robot_type ur10e

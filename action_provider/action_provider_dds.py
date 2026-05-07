@@ -13,12 +13,14 @@ class DDSActionProvider(ActionProvider):
         self.enable_gripper = args_cli.enable_dex1_dds
         self.enable_dex3 = args_cli.enable_dex3_dds
         self.enable_inspire = args_cli.enable_inspire_dds
+        self.enable_dg5f = getattr(args_cli, "enable_dg5f_dds", False)
         self.env = env
         # Initialize DDS communication
         self.robot_dds = None
         self.gripper_dds = None
         self.dex3_dds = None
         self.inspire_dds = None
+        self.dg5f_dds = None
         self._setup_dds()
         self._setup_joint_mapping()
     
@@ -30,12 +32,16 @@ class DDSActionProvider(ActionProvider):
         try:
             if self.enable_robot == "g129" or self.enable_robot == "h1_2":
                 self.robot_dds = dds_manager.get_object("g129")
+            elif self.enable_robot == "ur10e":
+                self.robot_dds = dds_manager.get_object("ur10e")
             if self.enable_gripper:
                 self.gripper_dds = dds_manager.get_object("dex1")
             elif self.enable_dex3:
                 self.dex3_dds = dds_manager.get_object("dex3")
             elif self.enable_inspire:
                 self.inspire_dds = dds_manager.get_object("inspire")
+            elif self.enable_dg5f:
+                self.dg5f_dds = dds_manager.get_object("dg5f")
             print(f"[{self.name}] DDS communication initialized")
         except Exception as e:
             print(f"[{self.name}] DDS initialization failed: {e}")
@@ -89,6 +95,22 @@ class DDSActionProvider(ActionProvider):
             self.arm_action_pose_indices = [self.arm_joint_mapping[name] for name in self.arm_joint_mapping.keys()]
             self._arm_target_indices = [self.joint_to_index[name] for name in self.arm_joint_mapping.keys()]
             self._arm_source_indices = [idx + 13 for idx in self.arm_joint_mapping.values()]  # source data from positions[13:]
+        elif self.enable_robot == "ur10e":
+            # UR10e 6-DoF arm — DDS LowCmd_.motor_cmd[0:6] direct (no offset).
+            self.arm_joint_mapping = {
+                "shoulder_pan_joint": 0,
+                "shoulder_lift_joint": 1,
+                "elbow_joint": 2,
+                "wrist_1_joint": 3,
+                "wrist_2_joint": 4,
+                "wrist_3_joint": 5,
+            }
+            self.all_joint_names = self.env.scene["robot"].data.joint_names
+            self.joint_to_index = {name: i for i, name in enumerate(self.all_joint_names)}
+            self.arm_action_pose = [self.joint_to_index[name] for name in self.arm_joint_mapping.keys()]
+            self.arm_action_pose_indices = list(self.arm_joint_mapping.values())
+            self._arm_target_indices = [self.joint_to_index[name] for name in self.arm_joint_mapping.keys()]
+            self._arm_source_indices = list(self.arm_joint_mapping.values())  # [0..5]
         if self.enable_gripper:
             self.gripper_joint_mapping = {
                 "left_hand_Joint1_1": 1,
@@ -113,6 +135,17 @@ class DDSActionProvider(ActionProvider):
                 "right_hand_middle_1_joint":4,
                 "right_hand_index_0_joint":5,
                 "right_hand_index_1_joint":6}
+        if self.enable_dg5f:
+            # DG-5F 20-joint mapping. Convention: finger-major DDS index
+            #   DDS 0..3   = finger 1 (rj_dg_1_{1..4})
+            #   DDS 4..7   = finger 2 (rj_dg_2_{1..4})
+            #   ...
+            #   DDS 16..19 = finger 5 (rj_dg_5_{1..4})
+            self.dg5f_hand_joint_mapping = {
+                f"rj_dg_{f}_{j}": (f - 1) * 4 + (j - 1)
+                for f in (1, 2, 3, 4, 5)
+                for j in (1, 2, 3, 4)
+            }
         if self.enable_inspire:
             self.inspire_hand_joint_mapping = {
                 "R_pinky_proximal_joint":0,
@@ -161,6 +194,9 @@ class DDSActionProvider(ActionProvider):
             self._inspire_special_target_indices = [self.joint_to_index[name] for name in self.special_joint_mapping.keys()]
             self._inspire_special_source_indices = [spec[0] for spec in self.special_joint_mapping.values()]
             self._inspire_special_scales = torch.tensor([spec[1] for spec in self.special_joint_mapping.values()], dtype=torch.float32)
+        if self.enable_dg5f:
+            self._dg5f_target_indices = [self.joint_to_index[name] for name in self.dg5f_hand_joint_mapping.keys()]
+            self._dg5f_source_indices = [idx for idx in self.dg5f_hand_joint_mapping.values()]
         
         device = self.env.device
         self._arm_target_idx_t = torch.tensor(self._arm_target_indices, dtype=torch.long, device=device)
@@ -179,9 +215,13 @@ class DDSActionProvider(ActionProvider):
             self._inspire_special_target_idx_t = torch.tensor(self._inspire_special_target_indices, dtype=torch.long, device=device)
             self._inspire_special_source_idx_t = torch.tensor(self._inspire_special_source_indices, dtype=torch.long, device=device)
             self._inspire_special_scales_t = self._inspire_special_scales.to(device)
-        
+        if self.enable_dg5f:
+            self._dg5f_target_idx_t = torch.tensor(self._dg5f_target_indices, dtype=torch.long, device=device)
+            self._dg5f_source_idx_t = torch.tensor(self._dg5f_source_indices, dtype=torch.long, device=device)
+
         self._full_action_buf = torch.zeros(len(self.all_joint_names), device=device, dtype=torch.float32)
-        self._positions_buf = torch.empty(29, device=device, dtype=torch.float32)
+        # _positions_buf must accommodate the largest source array — UR10e=6, others=29.
+        self._positions_buf = torch.empty(max(29, 20), device=device, dtype=torch.float32)
         if self.enable_gripper:
             self._gripper_buf = torch.empty(2, device=device, dtype=torch.float32)
         if self.enable_dex3:
@@ -189,6 +229,8 @@ class DDSActionProvider(ActionProvider):
             self._right_hand_buf = torch.empty(len(self._right_hand_source_indices), device=device, dtype=torch.float32)
         if self.enable_inspire:
             self._inspire_buf = torch.empty(12, device=device, dtype=torch.float32)
+        if self.enable_dg5f:
+            self._dg5f_buf = torch.empty(20, device=device, dtype=torch.float32)
     
     def get_action(self, env) -> Optional[torch.Tensor]:
         """Get action from DDS"""
@@ -210,6 +252,14 @@ class DDSActionProvider(ActionProvider):
                     positions = cmd_data['motor_cmd']['positions']
                     if len(positions) >= 29:
                         self._positions_buf[:29].copy_(torch.tensor(positions[:29], dtype=torch.float32, device=self.env.device))
+                        arm_vals = self._positions_buf.index_select(0, self._arm_source_idx_t)
+                        full_action.index_copy_(0, self._arm_target_idx_t, arm_vals)
+            elif self.enable_robot == "ur10e" and self.robot_dds:
+                cmd_data = self.robot_dds.get_robot_command()
+                if cmd_data and 'motor_cmd' in cmd_data:
+                    positions = cmd_data['motor_cmd']['positions']
+                    if len(positions) >= 6:
+                        self._positions_buf[:6].copy_(torch.tensor(positions[:6], dtype=torch.float32, device=self.env.device))
                         arm_vals = self._positions_buf.index_select(0, self._arm_source_idx_t)
                         full_action.index_copy_(0, self._arm_target_idx_t, arm_vals)
             # Get gripper command
@@ -251,6 +301,14 @@ class DDSActionProvider(ActionProvider):
                             full_action.index_copy_(0, self._inspire_target_idx_t, base_vals)
                             special_vals = self._inspire_buf.index_select(0, self._inspire_special_source_idx_t) * self._inspire_special_scales_t
                             full_action.index_copy_(0, self._inspire_special_target_idx_t, special_vals)
+            elif self.dg5f_dds:
+                hand_cmd = self.dg5f_dds.get_dg5f_command()
+                if hand_cmd and 'motor_cmd' in hand_cmd:
+                    positions = hand_cmd['motor_cmd'].get('positions', [])
+                    if len(positions) >= 20:
+                        self._dg5f_buf.copy_(torch.tensor(positions[:20], dtype=torch.float32, device=self.env.device))
+                        h_vals = self._dg5f_buf.index_select(0, self._dg5f_source_idx_t)
+                        full_action.index_copy_(0, self._dg5f_target_idx_t, h_vals)
             return full_action.unsqueeze(0)
             
         except Exception as e:
@@ -275,5 +333,7 @@ class DDSActionProvider(ActionProvider):
                 self.dex3_dds.stop_communication()
             if self.inspire_dds:
                 self.inspire_dds.stop_communication()
+            if self.dg5f_dds:
+                self.dg5f_dds.stop_communication()
         except Exception as e:
             print(f"[{self.name}] Clean up DDS resources failed: {e}")
