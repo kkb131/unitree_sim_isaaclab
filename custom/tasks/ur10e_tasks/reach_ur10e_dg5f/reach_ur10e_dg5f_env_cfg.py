@@ -23,7 +23,9 @@ from isaaclab.assets import AssetBaseCfg
 from isaaclab.sim import GroundPlaneCfg, DomeLightCfg
 from isaaclab.utils import configclass
 
+from custom.tasks.common_config.ur10e_camera_configs import UR10ECameraPresets
 from custom.tasks.common_config.ur10e_configs import UR10ERobotPresets
+from tasks.common_observations import camera_state
 from custom.tasks.common_observations import dg5f_state, ur10e_state
 
 from . import mdp
@@ -38,7 +40,7 @@ DEFAULT_EE_BODY = "wrist_3_link"
 
 @configclass
 class UR10eReachSceneCfg(InteractiveSceneCfg):
-    """Minimal scene: ground + dome light + UR10e+DG-5F robot."""
+    """Scene: ground + dome light + UR10e+DG-5F robot + 2 cameras (Day 4)."""
 
     ground = AssetBaseCfg(
         prim_path="/World/ground",
@@ -49,6 +51,14 @@ class UR10eReachSceneCfg(InteractiveSceneCfg):
         spawn=DomeLightCfg(intensity=2000.0, color=(0.9, 0.9, 0.9)),
     )
     robot = UR10ERobotPresets.ur10e_dg5f()
+
+    # Day 4 cameras — scene attribute names MUST be `front_camera` /
+    # `right_wrist_camera` exactly (camera_state.py hardcodes them).
+    # `left_wrist_camera` intentionally omitted (single-arm UR10e). Boot with
+    # --camera_include "front_camera,right_wrist_camera" so the sensor
+    # allowlist matches the scene.
+    front_camera = UR10ECameraPresets.ur10e_front_camera()
+    right_wrist_camera = UR10ECameraPresets.ur10e_right_wrist_camera()
 
 
 @configclass
@@ -110,6 +120,9 @@ class ObservationsCfg:
 
         ur10e_arm = ObsTerm(func=ur10e_state.get_ur10e_arm_joint_states)
         dg5f_hand = ObsTerm(func=dg5f_state.get_robot_dg5f_joint_states)
+        # Day 4 — drives the teleimager pipeline (env.scene[front/right_wrist_camera]
+        # → SHM → ZMQ 55555/55557 + WebRTC 60001/60003).
+        camera_image = ObsTerm(func=camera_state.get_camera_image)
 
         def __post_init__(self):
             self.enable_corruption = False

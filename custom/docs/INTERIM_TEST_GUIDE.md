@@ -406,6 +406,67 @@ python custom/scripts/test_lowcmd_pub.py --duration 5.0
 | HandCmd_ publish 후 `motor_cmd` 빈 array | publisher가 20 slot 명시 init 안 함. `cmd.motor_cmd = [MotorCmd_() for _ in range(20)]` |
 | Multi-host docker (다른 PC에서 sim, 또 다른 PC에서 publisher) | `cyclonedds.xml` unicast peers 명시 필요. 단일 host `--network=host`라면 multicast 자동 |
 
-## 11. Next Steps (Day 4 미진행)
+## 11. Day 4 검증 절차 (Camera ZMQ/WebRTC publish)
 
-Day 4: Camera scene mount + ZMQ/WebRTC publish (head/right_wrist/left_wrist 3개, 포트 55555-55557 + 60001-60003 그대로). 그 이후 Day 5: PD tuning + finger settling 보정.
+Day 4부턴 카메라 2개 (`front_camera` world-fixed, `right_wrist_camera` wrist_3 mount)가 scene에 attach됨. UR10e single-arm이라 `left_wrist_camera`는 미설치 — 부팅 wrapper가 yaml 패치로 image_server side에서도 disable.
+
+### 부팅
+
+```bash
+cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
+./custom/scripts/run_ur10e_dg5f.sh
+```
+
+wrapper가 자동:
+1. `cam_config_server.yaml` 백업 + `left_wrist_camera` enable_zmq/webrtc → false 패치
+2. `activate_env.sh` source
+3. sim_main 실행 (default args: `--task Isaac-Reach-UR10e-DG5F-Joint --robot_type ur10e --enable_dg5f_dds --enable_cameras --camera_include "front_camera,right_wrist_camera" --device cuda:0 --headless`)
+4. 종료 시 (EXIT/INT/TERM) yaml 복원
+
+추가 args 패스 가능: `./custom/scripts/run_ur10e_dg5f.sh --livestream_type 2 --public_ip 127.0.0.1`
+
+### ZMQ 검증
+
+```bash
+source custom/scripts/activate_env.sh
+python custom/scripts/test_zmq_recv.py --duration 5.0
+```
+
+기대:
+```
+front          (port 55555):  ~150 frames ( ~30 Hz), avg ~5KB  [OK]
+right_wrist    (port 55557):  ~150 frames ( ~30 Hz), avg ~20KB [OK]
+overall: PASS
+```
+
+### WebRTC 검증 (선택)
+
+부팅 로그에 `WebRTC: enabled, webrtc port=60001/60003` 확인 + browser:
+```
+https://localhost:60001   ← front_camera
+https://localhost:60003   ← right_wrist_camera
+```
+첫 접속 시 self-signed cert 신뢰 등록 필요.
+
+### 통과 기준
+
+| # | 항목 | 통과 기준 |
+|---|---|---|
+| 1 | wrapper boot | `[run_ur10e_dg5f] patched left_wrist_camera ...` + `controller is started` 출력 |
+| 2 | ZMQ front | 5초간 ≥ 100 frames, avg > 1KB |
+| 3 | ZMQ right_wrist | 5초간 ≥ 100 frames, avg > 1KB |
+| 4 | yaml 복원 | sim 종료 후 `grep -A2 left_wrist_camera teleimager/cam_config_server.yaml` 에 enable_zmq: true 정상 |
+
+### 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| ZMQ 0 frames + log "left_wrist_camera returned no frame" | wrapper 못 거치고 직접 sim_main 호출. `./custom/scripts/run_ur10e_dg5f.sh` 사용 또는 yaml 직접 패치 |
+| `Failed to create image server: Address already in use` | 이전 sim_main 잔재 — `pkill -9 -f sim_main && sleep 30` 후 재시도 |
+| ZMQ frames 있지만 size 너무 작음 (<500 byte) | 카메라가 보는 곳에 객체 없음 → JPEG 거의 단색. mount offset 보정 필요 (`custom/tasks/common_config/ur10e_camera_configs.py`) |
+| WebRTC 접속 시 "connection refused" | `--enable_cameras` flag 누락 또는 `--no_render` 사용 — wrapper default args 그대로 사용 |
+| yaml 복원 안 됨 (sim 강제 kill 시) | `cp teleimager/cam_config_server.yaml.ur10e.bak teleimager/cam_config_server.yaml` 수동 복원 |
+
+## 12. Next Steps (Day 5 미진행)
+
+Day 5: PD tuning + finger settling 보정 (Day 3에서 발견한 shoulder_lift settling time 부족 + DG-5F finger 4/5 mass/limit 영향 처리). 또는 종합 검증 + 최종 보고서. user 결정.
