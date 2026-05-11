@@ -467,6 +467,112 @@ https://localhost:60003   ← right_wrist_camera
 | WebRTC 접속 시 "connection refused" | `--enable_cameras` flag 누락 또는 `--no_render` 사용 — wrapper default args 그대로 사용 |
 | yaml 복원 안 됨 (sim 강제 kill 시) | `cp teleimager/cam_config_server.yaml.ur10e.bak teleimager/cam_config_server.yaml` 수동 복원 |
 
-## 12. Next Steps (Day 5 미진행)
+## 12. Day 5 검증 절차 (AMR platform + PD tuning + Ctrl+C cleanup)
 
-Day 5: PD tuning + finger settling 보정 (Day 3에서 발견한 shoulder_lift settling time 부족 + DG-5F finger 4/5 mass/limit 영향 처리). 또는 종합 검증 + 최종 보고서. user 결정.
+Day 5는 4건의 잔여 이슈 처리:
+1. wrapper Ctrl+C cleanup
+2. UR10e + DG-5F를 1m AMR pedestal 위에 mount (실배포 시나리오 + ground collision 해결)
+3. UR10e PD gain 보정 (Day 3 shoulder_lift settling 부족 해결)
+4. DG-5F joint limit 비대칭 (`rj_dg_1_2`) 인지 + fist pose preset
+
+자세한 배경은 [sim_day5_spike.md](sim_day5_spike.md).
+
+### 부팅 (Day 4와 동일, 단 새 PD gain · platform 적용)
+
+```bash
+cd /workspace/isaaclab/datasets/unitree_sim_isaaclab
+./custom/scripts/run_ur10e_dg5f.sh --headless
+```
+
+부팅 시 viewport 또는 livestream에서 UR10e가 z=1m platform 위에 안착되어 있는지 시각 확인 (optional). headless면 articulation enumeration 로그만 확인.
+
+### Ctrl+C cleanup 검증
+
+wrapper 부팅 후 다른 터미널에서:
+
+```bash
+WPID=$(pgrep -f run_ur10e_dg5f.sh | head -1)
+kill -INT $WPID
+sleep 8
+pgrep -af "sim_main|image_server" || echo "all clean"
+ls teleimager/cam_config_server.yaml*    # .ur10e.bak 없어야 함
+grep -A 3 "left_wrist_camera:" teleimager/cam_config_server.yaml | head -5   # enable_zmq: true 정상
+```
+
+기대:
+- `all clean` 출력
+- yaml 만 있고 `.ur10e.bak` 없음
+- `enable_zmq: true` (사전 patch 가 복원됨)
+
+### UR10e arm tracking (test_lowcmd_pub.py)
+
+```bash
+source custom/scripts/activate_env.sh
+python custom/scripts/test_lowcmd_pub.py --duration 5.0
+```
+
+기대:
+```
+UR10e arm tracking PASS (all err < 0.05 rad): True
+```
+
+이때 `measured` 6개 값이 `targets` 6개 값과 각각 < 0.05 rad 이내. Day 5 PD 보정 전엔 shoulder_lift err 0.4 rad, 보정 후 ≤ 0.05 rad.
+
+### DG-5F fist tracking (test_dg5f_pub.py --pose fist)
+
+```bash
+python custom/scripts/test_dg5f_pub.py --pose fist --duration 5.0
+```
+
+publish 후 별도로 subscribe해서 추종 확인:
+
+```bash
+python -u -c "
+import time
+from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelSubscriber
+from unitree_sdk2py.idl.unitree_hg.msg.dds_ import HandState_
+ChannelFactoryInitialize(1)
+last = {'q': None}
+def cb(m):
+    if len(m.motor_state) >= 20:
+        last['q'] = [round(float(m.motor_state[i].q), 3) for i in range(20)]
+sub = ChannelSubscriber('rt/dg5f/state', HandState_); sub.Init(cb, 32)
+time.sleep(1.0); sub.Close()
+FIST=[0,-1,0.5,0.5, 0,1,0.5,0.5, 0,1,0.5,0.5, 0,1,0.5,0.5, 0.5,0.3,0.5,0.5]
+errs=[abs(m-t) for m,t in zip(last['q'], FIST)]
+print(f'max err={max(errs):.4f}, OOT={sum(1 for e in errs if e>0.05)}/20')
+"
+```
+
+기대: `max err < 0.05, OOT=0/20`.
+
+⚠️ 절대 `--q 0.3` 균등 명령은 보내지 말 것 — `rj_dg_1_2` (thumb 굴곡) 의 URDF limit `upper=0.0` 이라 positive q는 limit clamp되어 stuck. f1_2만 0.000으로 측정됨. **sim bug 아니라 joint convention** — fist preset이나 retargeting 측 처리 필요.
+
+### Day 5 통과 기준
+
+| # | 항목 | 통과 기준 |
+|---|---|---|
+| 1 | Ctrl+C cleanup | wrapper SIGINT 8초 내 모든 child 정리, yaml 복원, `.ur10e.bak` 없음 |
+| 2 | UR10e arm 추종 | 6 joint 모두 err < 0.05 rad |
+| 3 | DG-5F fist 추종 | 20 joint 모두 err < 0.05 rad |
+| 4 | boot test | 26 joint 유지, EE body `wrist_3_link` 존재, 30 step crash-free |
+
+### 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| wrapper Ctrl+C 무반응 (Day 5 fix 전 증상) | wrapper script 가 sim_main 을 background+wait+trap 패턴이 아닌 foreground 호출. `git pull` 후 `run_ur10e_dg5f.sh` 최신화 확인 |
+| UR10e arm err 0.2~0.4 rad | PD gain이 Day 4 이전 값 (kp=300/kd=8) — `custom/robots/ur10e.py` 의 arm actuator block 갱신 확인 (shoulder_lift kp=2500) |
+| f1_2만 0.000으로 stuck | thumb f1_2 URDF limit `upper=0.0` — fist preset 또는 negative q 사용 필요. `--q 0.3` 균등 명령은 무효 |
+| arm이 부팅 즉시 platform 위가 아니라 공중에 떠 있음 | `init_pos=(0,0,1.0)` 가 안 들어갔거나 `init_pos=(0,0,0)` 으로 override — env_cfg `UR10eReachSceneCfg.robot = UR10ERobotPresets.ur10e_dg5f(init_pos=...)` 확인 |
+| AMR platform이 떨어지거나 흔들림 | `kinematic_enabled=True` 누락 — `custom/tasks/ur10e_tasks/reach_ur10e_dg5f/reach_ur10e_dg5f_env_cfg.py` 의 amr_platform spawn 설정 확인 |
+
+## 13. Next Steps (sim build 5-day 완료)
+
+Day 1-5 완료 → 가이드 §6 7개 항목 종합 보고:
+- Day 2 boot ✅
+- Day 3 rt/lowstate / rt/dg5f/state pub ✅, rt/lowcmd / rt/dg5f/cmd round-trip ✅
+- Day 4 ZMQ 2 cameras (front, right_wrist; left_wrist 의도적 disable) ✅, WebRTC 2 streams ✅
+- Day 5 PD tuning ✅ (UR10e 6/6 < 0.05 rad, DG-5F 20/20 < 0.05 rad)
+
+xr_teleop docker로 회신 후 Phase 2 / Week 4-6 / Gate 4 의 sim 측 deliverable 완료.

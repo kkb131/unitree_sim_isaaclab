@@ -9,6 +9,7 @@ and 26 joints + the chosen EE body are correct.
 
 import math
 
+import isaaclab.sim as sim_utils
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import (
     EventTermCfg as EventTerm,
@@ -19,7 +20,7 @@ from isaaclab.managers import (
     TerminationTermCfg as DoneTerm,
 )
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.assets import AssetBaseCfg
+from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
 from isaaclab.sim import GroundPlaneCfg, DomeLightCfg
 from isaaclab.utils import configclass
 
@@ -37,10 +38,17 @@ from . import mdp
 # body_names so this can be corrected if needed before training.
 DEFAULT_EE_BODY = "wrist_3_link"
 
+# Day 5 — real deployment bolts the UR10e to a ~1m tall AMR. Without raising
+# the base in sim, default joint targets like shoulder_lift=-1.0 swing the
+# wrist into the ground plane and the sim wedges itself against the floor.
+# Platform height + robot lift are kept in sync via PLATFORM_HEIGHT.
+PLATFORM_HEIGHT = 1.0
+PLATFORM_SIZE = (0.6, 0.8, PLATFORM_HEIGHT)  # x: 60 cm, y: 80 cm, z: 1.0 m
+
 
 @configclass
 class UR10eReachSceneCfg(InteractiveSceneCfg):
-    """Scene: ground + dome light + UR10e+DG-5F robot + 2 cameras (Day 4)."""
+    """Scene: ground + dome light + AMR platform + UR10e+DG-5F + 2 cameras."""
 
     ground = AssetBaseCfg(
         prim_path="/World/ground",
@@ -50,7 +58,24 @@ class UR10eReachSceneCfg(InteractiveSceneCfg):
         prim_path="/World/Light",
         spawn=DomeLightCfg(intensity=2000.0, color=(0.9, 0.9, 0.9)),
     )
-    robot = UR10ERobotPresets.ur10e_dg5f()
+
+    # Day 5 — kinematic cuboid acting as the AMR pedestal the UR10e sits on.
+    # Kinematic = no physics dynamics, collision only; the cuboid won't fall
+    # or absorb forces from the arm.
+    amr_platform = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/AMRPlatform",
+        spawn=sim_utils.CuboidCfg(
+            size=PLATFORM_SIZE,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.3, 0.3, 0.4)),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.0, 0.0, PLATFORM_HEIGHT / 2.0),  # center at half-height → top sits at z=PLATFORM_HEIGHT
+        ),
+    )
+
+    robot = UR10ERobotPresets.ur10e_dg5f(init_pos=(0.0, 0.0, PLATFORM_HEIGHT))
 
     # Day 4 cameras — scene attribute names MUST be `front_camera` /
     # `right_wrist_camera` exactly (camera_state.py hardcodes them).

@@ -30,6 +30,10 @@ parser.add_argument("--num_envs", type=int, default=1)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
+# Day 4+ adds Cameras to the scene — AppLauncher refuses to load them unless
+# --enable_cameras is set, so flip it on by default for this boot test.
+args.enable_cameras = True
+
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
