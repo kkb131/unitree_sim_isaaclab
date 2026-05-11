@@ -222,6 +222,16 @@ class DDSActionProvider(ActionProvider):
         self._full_action_buf = torch.zeros(len(self.all_joint_names), device=device, dtype=torch.float32)
         # _positions_buf must accommodate the largest source array — UR10e=6, others=29.
         self._positions_buf = torch.empty(max(29, 20), device=device, dtype=torch.float32)
+
+        # Default action = init joint pose. Upstream zeroed the action buffer
+        # every step which is OK for H1-2/G1 (their controlled joints have
+        # init pose ≈ 0) but for UR10e (shoulder_lift=-1.57, elbow=+1.57, ...)
+        # the unpopulated buffer actively dragged the arm to zero before any
+        # DDS command arrived. Holding the init pose is also strictly safer
+        # for all robots if comms hiccup, so we apply it unconditionally.
+        self._default_joint_pos = (
+            self.env.scene["robot"].data.default_joint_pos[0].clone().to(device)
+        )
         if self.enable_gripper:
             self._gripper_buf = torch.empty(2, device=device, dtype=torch.float32)
         if self.enable_dex3:
@@ -237,7 +247,9 @@ class DDSActionProvider(ActionProvider):
         try:
 
             full_action = self._full_action_buf
-            full_action.zero_()
+            # Start from init pose, then overwrite only the slots a DDS topic
+            # provides this step. See `_default_joint_pos` setup above.
+            full_action.copy_(self._default_joint_pos)
             if self.enable_robot == "g129" and self.robot_dds:
                 cmd_data = self.robot_dds.get_robot_command()
                 if cmd_data and 'motor_cmd' in cmd_data:

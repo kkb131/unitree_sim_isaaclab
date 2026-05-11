@@ -1,4 +1,4 @@
-# Day 5 Spike — AMR platform + Ctrl+C wrapper fix + PD gain tuning
+# Day 5 Spike — AMR platform + Ctrl+C wrapper fix + PD gain tuning + init-pose hold
 
 > Plan: [/root/.claude/plans/keen-zooming-mist.md](/root/.claude/plans/keen-zooming-mist.md) Day 5 섹션
 > Branch: `feat/ur10e-dg5f-sim`
@@ -6,11 +6,12 @@
 
 ## 0. Scope
 
-Day 3에서 미해결로 남았던 4건 처리:
+Day 3에서 미해결로 남았던 4건 + Day 5 추가 발견 1건 (init pose 미유지) 처리:
 1. `run_ur10e_dg5f.sh` 가 Ctrl+C로 안 멈추는 문제
 2. `test_lowcmd_pub.py` 실행 시 arm이 ground와 충돌해 멈춤 (실배포는 1m AMR 위 mount)
 3. `test_dg5f_pub.py` 의 thumb f1_2가 q=0.3 명령에 안 움직임
 4. UR10e shoulder_lift settling time 부족 (Day 3에서 target=-1.0, measured=-0.752, err 0.248 rad)
+5. **(추가)** sim 부팅 직후 arm이 init pose (`shoulder_lift=-1.57` 등) 안 유지하고 0 으로 끌려감 — PD gain 문제 아니라 `action_provider_dds.py` 가 매 step `full_action.zero_()` 했던 것이 원인
 
 ## 1. 변경 파일
 
@@ -18,11 +19,12 @@ Day 3에서 미해결로 남았던 4건 처리:
 |---|---|
 | [`custom/scripts/run_ur10e_dg5f.sh`](../scripts/run_ur10e_dg5f.sh) | sim_main을 background로 띄우고 `wait`, `trap INT/TERM`이 직접 child에 signal forwarding |
 | [`custom/tasks/ur10e_tasks/reach_ur10e_dg5f/reach_ur10e_dg5f_env_cfg.py`](../tasks/ur10e_tasks/reach_ur10e_dg5f/reach_ur10e_dg5f_env_cfg.py) | `amr_platform` (kinematic cuboid 0.6 × 0.8 × 1.0 m) scene attribute 추가 + `robot init_pos=(0,0,1.0)` |
-| [`custom/robots/ur10e.py`](../robots/ur10e.py) | arm PD gain 대폭 상향 (shoulder_lift kp 300→2500, damping per-joint) |
+| [`custom/robots/ur10e.py`](../robots/ur10e.py) | arm PD gain 대폭 상향 (shoulder_lift kp 300→**4000**, elbow→**3000**, damping per-joint). DG-5F kp 1000→1500, kd 15→30, effort_limit 100→200 |
 | [`custom/scripts/test_dg5f_pub.py`](../scripts/test_dg5f_pub.py) | `--pose fist/open` preset 추가 — DG-5F per-joint URDF limit를 존중하는 target vector |
 | [`custom/scripts/test_ur10e_dg5f_boot.py`](../scripts/test_ur10e_dg5f_boot.py) | `args.enable_cameras = True` 자동 설정 (Day 4 cameras scene attach 후 boot test가 cameras flag 요구) |
+| [`action_provider/action_provider_dds.py`](../../action_provider/action_provider_dds.py) | **upstream 수정**. default action = init joint pose (was: zero). DDS 명령 없을 땐 init pose 유지 |
 
-upstream 수정 0건.
+upstream 수정 1건 (action_provider_dds.py — 안전한 holdover 동작 변경, 모든 robot type 적용 무해).
 
 ## 2. 핵심 발견 / 설계 결정
 
@@ -101,30 +103,85 @@ FIST_POSE = [
 
 xr_teleop docker 측에서 dex_retargeting → DDS publish 할 때도 동일하게 thumb f1_2 sign convention 인지하고 publish 해야 함.
 
-### 2.4 UR10e PD gain 보정
+### 2.4 UR10e + DG-5F PD gain 보정
 
 Day 3/Day 5 초반 측정:
 - shoulder_lift target=-1.0 → measured -0.6 ~ -0.75 (gravity 견딤 부족)
 - elbow target=1.2 → measured 1.35 (overshoot/under-shoot)
 
-원인: 기존 `kp=300, kd=8` (모든 arm joint 균등) 은 6-DoF 산업 로봇 wrist 무게(33kg arm + 1kg 핸드 + payload)에 비해 절대 부족. 문헌상 UR10e 류 6-DoF arm 시뮬에서 shoulder/elbow kp 1000-3000 N·m/rad 가 일반적.
+원인: 기존 `kp=300, kd=8` (모든 arm joint 균등) 은 6-DoF 산업 로봇 wrist 무게(33 kg arm + 1 kg 핸드 + payload)에 비해 절대 부족. ImplicitActuatorCfg 는 P + D control 만 적용하므로 gravity-comp feedforward 없음 → static error = τ_gravity / kp. elbow init pose +1.57 에서 forearm + DG-5F (~5 kg) horizontal 일 때 τ_grav ≈ 15 N·m, kp=300 이면 err = 0.05 rad (실제론 Day 3 측정 0.4 rad — DG-5F mass 모델이 더 무거운 모양).
 
-새 gain (per-joint):
+새 arm gain (per-joint, 2차 보정 후 최종):
 
-| joint | kp (old → new) | kd (old → new) |
+| joint | kp (orig → Day 5a → Day 5b 최종) | kd (orig → Day 5a → Day 5b 최종) |
 |---|---|---|
-| shoulder_pan | 300 → **1000** | 8 → **50** |
-| shoulder_lift | 300 → **2500** | 8 → **80** |
-| elbow | 250 → **1500** | 8 → **60** |
-| wrist_1 | 150 → **500** | 8 → **25** |
-| wrist_2 | 150 → **300** | 8 → **20** |
-| wrist_3 | 150 → **200** | 8 → **15** |
+| shoulder_pan | 300 → 1000 → **1500** | 8 → 50 → **80** |
+| shoulder_lift | 300 → 2500 → **4000** | 8 → 80 → **130** |
+| elbow | 250 → 1500 → **3000** | 8 → 60 → **100** |
+| wrist_1 | 150 → 500 → **800** | 8 → 25 → **40** |
+| wrist_2 | 150 → 300 → **500** | 8 → 20 → **30** |
+| wrist_3 | 150 → 200 → **300** | 8 → 15 → **20** |
 
-damping 은 `kd ≈ 2·sqrt(kp·J_eff)` 비례 (critical-damping 근사). 오실레이션 없이 settling.
+DG-5F:
+
+| 항목 | orig → 최종 | 메모 |
+|---|---|---|
+| stiffness | 1000 → **1500** | finger 별 균등, contact 시 더 견고하게 |
+| damping | 15 → **30** | 진동 억제 / 빠른 settling |
+| effort_limit | 100 → **200** | 1500 × 0.07 ≈ 100 saturate 회피 (free air 무관, contact 에선 cap) |
+| velocity_limit | 50 (유지) | unitree implicit actuator 가 무시하는 경우가 있어 effort 우선 |
+
+damping ≈ 2·sqrt(kp · J_eff) (critical-damping 근사). UR10e shoulder dominant inertia ~0.5 kg·m² 가정, DG-5F finger inertia ~10⁻³ kg·m².
 
 ### 2.5 boot test (`test_ur10e_dg5f_boot.py`) cameras flag
 
 Day 4 이후 scene에 `front_camera`, `right_wrist_camera` 가 있어 standalone boot test가 그냥 실행되면 `RuntimeError: A camera was spawned without the --enable_cameras flag` 로 죽음. test script에 `args.enable_cameras = True` 1줄 추가 — boot test는 항상 cameras 켜고 실행 (rendering offscreen).
+
+### 2.6 (추가 발견) action_provider 가 init pose 안 잡는 문제
+
+Day 5 PD gain 1차 조정 후에도 부팅 직후 arm 자세를 측정하면 모든 joint 가 0 으로 끌려있음:
+
+```
+shoulder_pan      init +0.000   meas -0.000   drift  0.000
+shoulder_lift     init -1.570   meas +0.000   drift +1.570  ← 완전히 0으로
+elbow             init +1.570   meas +0.000   drift -1.570
+wrist_1           init -1.570   meas +0.000   drift +1.570
+wrist_2           init -1.570   meas +0.000   drift +1.570
+wrist_3           init +0.000   meas -0.000   drift  0.000
+```
+
+PD gain을 아무리 올려도 안 잡힘. 원인을 추적해보면 [`action_provider/action_provider_dds.py` line 239-240](../../action_provider/action_provider_dds.py):
+
+```python
+def get_action(self, env):
+    full_action = self._full_action_buf
+    full_action.zero_()                        # ← 매 step buffer를 0으로 reset
+    ...
+    if cmd_data and 'motor_cmd' in cmd_data:   # DDS 명령이 있어야만 populate
+        ...
+```
+
+즉 DDS 명령이 안 도착한 step은 모든 joint 에 `action = 0` (절대 angle 0 rad) 으로 명령 → PD controller 가 init pose 가 아닌 0 으로 끌어감.
+
+H1-2 / G1 은 controlled joints의 init pose 가 ≈ 0 라서 안 보였던 quirk. UR10e 는 `shoulder_lift=-1.57`, `elbow=+1.57` 이라 즉시 1.57 rad 거리만큼 끌려감.
+
+**해결**: action_provider default buffer 를 init joint pose로 (zero 대신):
+
+```python
+# _setup_joint_mapping() 끝부분
+self._default_joint_pos = (
+    self.env.scene["robot"].data.default_joint_pos[0].clone().to(device)
+)
+...
+def get_action(self, env):
+    full_action = self._full_action_buf
+    full_action.copy_(self._default_joint_pos)  # ← init pose로 reset
+    ...
+```
+
+이렇게 하면 DDS 명령 도착 전 — 또는 일부 joint 만 명령 받는 경우 — unmapped joint 는 init pose 를 유지. DDS 명령이 오는 mapped joint 만 그 값으로 overwrite.
+
+부수 효과 (안전성 개선): DDS comms 가 끊겨 cache 가 stale 되면 모든 robot 이 0 pose 가 아니라 마지막 명령 또는 init pose 를 유지. H1-2 / G1 도 이 동작이 더 안전.
 
 ## 3. 검증 결과
 
@@ -206,16 +263,48 @@ PASS — 30 steps executed without crash
 
 scene에 amr_platform 추가 후에도 articulation 26 joint 유지, EE body `wrist_3_link` 변동 없음. ✅ PASS
 
-## 4. Day 5 통과 기준 (4개)
+## 4. Day 5 통과 기준 (5개)
 
-| # | 항목 | 결과 |
-|---|---|---|
-| 1 | run wrapper Ctrl+C로 cleanly 종료 (yaml 복원, child process 정리) | ✅ |
-| 2 | UR10e arm 6 joint 모두 target 추종 err < 0.05 rad | ✅ (max 0.041) |
-| 3 | DG-5F 20 joint 모두 fist target 추종 err < 0.05 rad | ✅ (max 0.012) |
-| 4 | platform 추가 후 boot test 26 joint 유지 + 30 step crash-free | ✅ |
+| # | 항목 | Day 5a (PD only) | Day 5b 최종 (PD + action_provider fix) |
+|---|---|---|---|
+| 1 | run wrapper Ctrl+C로 cleanly 종료 (yaml 복원, child process 정리) | ✅ | ✅ |
+| 2 | UR10e arm 6 joint 모두 target 추종 err < 0.05 rad | ✅ (max 0.041) | ✅ (max **0.025**) |
+| 3 | DG-5F 20 joint 모두 fist target 추종 err < 0.05 rad | ✅ (max 0.012) | ✅ (max 0.015) |
+| 4 | platform 추가 후 boot test 26 joint 유지 + 30 step crash-free | ✅ | ✅ |
+| 5 | **부팅 직후 DDS 명령 없이 init pose 유지 drift < 0.05 rad** | ❌ (drift 1.57 rad) | ✅ (max **0.018**) |
 
-✅ Day 5 4/4 PASS.
+✅ Day 5 5/5 PASS (최종).
+
+### 4.1 측정 상세 (sim 재부팅 직후, DDS 명령 보내기 전)
+
+```
+--- UR10e arm (init pose hold check, no DDS sent) ---
+joint               init     meas    drift
+shoulder_pan      +0.000   -0.000   -0.000
+shoulder_lift     -1.570   -1.556   +0.014
+elbow             +1.570   +1.588   +0.018
+wrist_1           -1.570   -1.564   +0.006
+wrist_2           -1.570   -1.570   +0.000
+wrist_3           +0.000   -0.000   -0.000
+
+--- DG-5F hand (init=0.0 all, no DDS sent) ---
+max drift = 0.024  (f1_1 — gravity sag, 무해)
+hand joints drifted (>0.05): 0/20
+```
+
+### 4.2 측정 상세 (DDS publish + tracking)
+
+```
+--- UR10e arm (target=[0,-1.0,1.2,-1.2,-1.5,0], publish 5s) ---
+  targets : [ 0.000, -1.000,  1.200, -1.200, -1.500,  0.000]
+  measured: [-0.000, -0.975,  1.216, -1.198, -1.501, -0.001]
+  abs err : [ 0.000,  0.025,  0.016,  0.002,  0.001,  0.001]
+  PASS (all err < 0.05): True
+
+--- DG-5F fist pose (publish 5s) ---
+  max err = 0.0150, joints out of tolerance: 0/20
+  PASS: True
+```
 
 ## 5. 시행착오 (다른 PC 재현 시 참고)
 

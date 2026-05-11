@@ -58,12 +58,15 @@ UR10E_WITH_DG5F_HAND = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        # Day 5 PD tune — initial values (kp=300/kd=8) left shoulder_lift with
-        # a 0.4 rad steady-state error at target=-1.0 (gravity-loaded). UR10e
-        # is a ~33 kg arm; literature PD gains for similar 6-DoF industrial
-        # arms sit in the 1000-3000 N·m/rad range for shoulder/elbow.
-        # Damping bumped roughly in proportion so settling stays critically
-        # damped (no visible oscillation under DDS step commands).
+        # Day 5 PD tune. shoulder_lift / elbow stiffness is sized to keep the
+        # gravity-loaded steady-state error under ~0.025 rad at the heaviest
+        # init pose. ImplicitActuatorCfg uses pure P+D (no gravity-comp
+        # feedforward), so kp must be high enough that kp·err ≈ τ_gravity.
+        #   elbow init pose +1.57 puts the forearm + DG-5F (~5 kg) horizontal
+        #   → τ_grav ≈ 5·9.81·0.3 ≈ 15 Nm → kp ≥ 1500 gives err ≤ 0.01 rad.
+        # Bumped further to 3000 to absorb DG-5F mass uncertainty until
+        # Tesollo-spec inertia is wired in. Damping ≈ 2·sqrt(kp·J_eff) for
+        # critical damping at the dominant joint inertia (~0.5 kg·m²).
         "arm": ImplicitActuatorCfg(
             joint_names_expr=[
                 "shoulder_pan_joint",
@@ -76,29 +79,35 @@ UR10E_WITH_DG5F_HAND = ArticulationCfg(
             effort_limit=None,
             velocity_limit=None,
             stiffness={
-                "shoulder_pan_joint": 1000.0,
-                "shoulder_lift_joint": 2500.0,
-                "elbow_joint": 1500.0,
-                "wrist_1_joint": 500.0,
-                "wrist_2_joint": 300.0,
-                "wrist_3_joint": 200.0,
+                "shoulder_pan_joint": 1500.0,
+                "shoulder_lift_joint": 4000.0,
+                "elbow_joint": 3000.0,
+                "wrist_1_joint": 800.0,
+                "wrist_2_joint": 500.0,
+                "wrist_3_joint": 300.0,
             },
             damping={
-                "shoulder_pan_joint": 50.0,
-                "shoulder_lift_joint": 80.0,
-                "elbow_joint": 60.0,
-                "wrist_1_joint": 25.0,
-                "wrist_2_joint": 20.0,
-                "wrist_3_joint": 15.0,
+                "shoulder_pan_joint": 80.0,
+                "shoulder_lift_joint": 130.0,
+                "elbow_joint": 100.0,
+                "wrist_1_joint": 40.0,
+                "wrist_2_joint": 30.0,
+                "wrist_3_joint": 20.0,
             },
             armature=None,
         ),
+        # DG-5F. Original kp=1000/kd=15 already tracked fist pose to within
+        # 0.012 rad, but effort_limit=100 N·m would saturate well before kp
+        # could exert anything meaningful (1500·err = 100 at err≈0.07 rad —
+        # not relevant for free-air tracking but limiting for finger-contact
+        # grasps). Raise effort_limit + bump kp/kd modestly so contact
+        # interaction has headroom.
         "dg5f": ImplicitActuatorCfg(
             joint_names_expr=["rj_dg_.*"],
-            effort_limit=100.0,
+            effort_limit=200.0,
             velocity_limit=50.0,
-            stiffness={"rj_dg_.*": 1000.0},
-            damping={"rj_dg_.*": 15.0},
+            stiffness={"rj_dg_.*": 1500.0},
+            damping={"rj_dg_.*": 30.0},
             armature={".*": 0.0},
         ),
     },
